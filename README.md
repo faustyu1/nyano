@@ -20,12 +20,13 @@ Arguments:
 <PATH>  path to the file to open
 
 Options:
--c, --create   create the file if it does not exist
--p, --parent   create parent folders too if they do not exist (requires --create)
--r, --read     open the file in read-only mode
--b, --backup   create a backup copy after saving
--h, --help     Print help
--V, --version  Print version
+-c, --create    create the file if it does not exist
+-p, --parent    create parent folders too if they do not exist (requires --create)
+-r, --read      open the file in read-only mode
+-b, --backup    create a backup copy after saving
+-h, --help      Print help
+-V, --version   Print version
+-t  --tab-width set a tab width
 ```
 
 ### Editor
