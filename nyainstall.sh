@@ -14,6 +14,9 @@ if [ -w /usr/local/bin ]; then
 elif sudo -n true 2>/dev/null; then
     INSTALL_DIR="/usr/local/bin"
     USE_SUDO=1
+elif which doas 2>/dev/null; then
+    INSTALL_DIR="/usr/local/bin"
+    USE_DOAS=1
 else
     INSTALL_DIR="$HOME/.local/bin"
     mkdir -p "$INSTALL_DIR"
@@ -28,6 +31,8 @@ cargo build --release
 echo "Installing to $INSTALL_PATH"
 if [ -n "$USE_SUDO" ]; then
     sudo install -m 755 target/release/nyano "$INSTALL_PATH"
+elif [ -n "$USE_DOAS" ]; then
+    doas install -m 755 target/release/nyano "$INSTALL_PATH"
 else
     install -m 755 target/release/nyano "$INSTALL_PATH"
 fi
