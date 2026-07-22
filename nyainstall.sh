@@ -34,7 +34,8 @@ fi
 
 cd ..
 rm -rf nyano-src
-rm -- "$0"
+# When run through `curl | sh`, $0 is "sh" rather than a script path.
+[ -f "$0" ] && rm -- "$0"
 
 printf '\033[32mSuccessfully installed to %s!\033[0m\n' "$INSTALL_PATH"
 
