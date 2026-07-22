@@ -1,0 +1,192 @@
+use std::io;
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
+
+use crate::backup::create_backup;
+use crate::document::Document;
+use crate::ui::TerminalUi;
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const BANNER_DURATION: Duration = Duration::from_secs(2);
+
+pub struct Editor {
+    doc: Document,
+    ui: TerminalUi,
+    file_path: PathBuf,
+    read_only: bool,
+    backup_on_save: bool,
+    banner: Option<(String, Instant)>,
+}
+
+pub enum ExitReason {
+    Saved,
+    DiscardedChanges,
+    PermissionDenied,
+}
+
+impl Editor {
+    pub fn new(
+        doc: Document,
+        file_path: PathBuf,
+        read_only: bool,
+        backup_on_save: bool,
+        initial_banner: Option<String>,
+    ) -> io::Result<Self> {
+        let ui = TerminalUi::init()?;
+        let banner = initial_banner.map(|text| (text, Instant::now()));
+        Ok(Editor { doc, ui, file_path, read_only, backup_on_save, banner })
+    }
+
+    pub fn run(mut self) -> io::Result<ExitReason> {
+        let result = self.main_loop();
+        self.ui.shutdown()?;
+        result
+    }
+
+    fn main_loop(&mut self) -> io::Result<ExitReason> {
+        loop {
+            self.expire_banner();
+            self.ui.adjust_scroll(self.doc.cursor_row);
+            let banner_text = self.banner.as_ref().map(|(text, _)| text.as_str());
+            self.ui.render(&self.doc, &self.file_path, self.read_only, banner_text, VERSION)?;
+
+            if !event::poll(Duration::from_millis(200))? {
+                continue;
+            }
+
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Release {
+                        continue;
+                    }
+                    if let Some(reason) = self.handle_key(key.code, key.modifiers)? {
+                        return Ok(reason);
+                    }
+                }
+                Event::Mouse(mouse_event) => {
+                    if let MouseEventKind::Down(_) = mouse_event.kind {
+                        let row = self.ui.scroll_offset + mouse_event.row.saturating_sub(1) as usize;
+                        let col = mouse_event.column as usize;
+                        self.doc.set_cursor_from_screen(row, col);
+                    }
+                }
+                Event::Resize(_, _) => {
+                    self.ui.refresh_size()?;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn expire_banner(&mut self) {
+        if let Some((_, shown_at)) = &self.banner {
+            if shown_at.elapsed() >= BANNER_DURATION {
+                self.banner = None;
+            }
+        }
+    }
+
+    fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> io::Result<Option<ExitReason>> {
+        if modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('s') {
+            if self.read_only {
+                return Ok(None);
+            }
+            return self.try_save();
+        }
+
+        if (modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('q'))
+            || code == KeyCode::Esc
+        {
+            return self.try_quit();
+        }
+
+        if self.read_only {
+            self.handle_navigation_key(code);
+            return Ok(None);
+        }
+
+        match code {
+            KeyCode::Char(c) => self.doc.insert_char(c),
+            KeyCode::Tab => self.doc.insert_tab(),
+            KeyCode::Enter => self.doc.insert_newline(),
+            KeyCode::Backspace => self.doc.backspace(),
+            KeyCode::Delete => self.doc.delete_forward(),
+            _ => self.handle_navigation_key(code),
+        }
+        Ok(None)
+    }
+
+    fn handle_navigation_key(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::Left => self.doc.move_left(),
+            KeyCode::Right => self.doc.move_right(),
+            KeyCode::Up => self.doc.move_up(),
+            KeyCode::Down => self.doc.move_down(),
+            _ => {}
+        }
+    }
+
+    fn try_save(&mut self) -> io::Result<Option<ExitReason>> {
+        let text = self.doc.to_text();
+        match std::fs::write(&self.file_path, &text) {
+            Ok(()) => {
+                self.doc.dirty = false;
+                if self.backup_on_save {
+                    let _ = create_backup(&self.file_path, &text);
+                }
+                Ok(None)
+            }
+            Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
+                Ok(Some(ExitReason::PermissionDenied))
+            }
+            Err(_) => Ok(None),
+        }
+    }
+
+    fn try_quit(&mut self) -> io::Result<Option<ExitReason>> {
+        if !self.doc.dirty {
+            return Ok(Some(ExitReason::DiscardedChanges));
+        }
+        match self.prompt_save_on_quit()? {
+            QuitChoice::Save => {
+                if let Some(reason) = self.try_save()? {
+                    return Ok(Some(reason));
+                }
+                Ok(Some(ExitReason::Saved))
+            }
+            QuitChoice::Discard => Ok(Some(ExitReason::DiscardedChanges)),
+            QuitChoice::Cancel => Ok(None),
+        }
+    }
+    
+    fn prompt_save_on_quit(&mut self) -> io::Result<QuitChoice> {
+        loop {
+            self.ui.render(
+                &self.doc,
+                &self.file_path,
+                self.read_only,
+                Some("Save changes before quitting? (y/n, esc to cancel)"),
+                VERSION,
+            )?;
+            if let Event::Key(key) = event::read()? {
+                if key.kind == KeyEventKind::Release {
+                    continue;
+                }
+                match key.code {
+                    KeyCode::Char('y') | KeyCode::Char('Y') => return Ok(QuitChoice::Save),
+                    KeyCode::Char('n') | KeyCode::Char('N') => return Ok(QuitChoice::Discard),
+                    KeyCode::Esc => return Ok(QuitChoice::Cancel),
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+enum QuitChoice {
+    Save,
+    Discard,
+    Cancel,
+}
