@@ -1,5 +1,7 @@
 # Nyano utility
-A simple utility for Linux designed for simple and fast file editing.
+A simple utility for Linux and macOS designed for simple and fast file editing.
+
+Supported platforms: Linux and macOS.
 
 ## Installation
 Use this command to clone repository and compile then install binary:
