@@ -1,14 +1,13 @@
 # Nyano utility
 A simple utility for Linux and macOS designed for simple and fast file editing.
 
-Supported platforms: Linux and macOS.
-
 ## Installation
 Use this command to clone repository and compile then install binary:
 ```shell
 curl -fsSL https://raw.githubusercontent.com/shareui/nyano/main/nyainstall.sh | sh
 ```
 Requires `cargo` and `git`
+> Supported platforms: Linux and macOS.
 
 ## Usage guide
 
