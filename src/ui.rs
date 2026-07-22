@@ -80,16 +80,35 @@ impl TerminalUi {
     }
 
     fn render_cursor(&self, out: &mut impl Write, doc: &Document) -> io::Result<()> {
-        let screen_row = (doc.cursor_row - self.scroll_offset) as u16 + 1;
-        let screen_col = doc.cursor_col as u16;
+        // Fix #4: guard against cursor_row < scroll_offset (would underflow usize)
+        // and clamp the result to the visible body area.
+        if doc.cursor_row < self.scroll_offset {
+            return Ok(());
+        }
+        let relative = doc.cursor_row - self.scroll_offset;
+        let body_height = self.body_height();
+        if relative >= body_height {
+            return Ok(());
+        }
+        let screen_row = (relative as u16).saturating_add(1);
+
+        // Use visual column so the cursor lands on the correct screen column
+        // when tabs are present.
+        let screen_col = doc.visual_cursor_col() as u16;
+
         let under_cursor = doc
             .lines
             .get(doc.cursor_row)
             .and_then(|line| line.get(doc.cursor_col))
             .copied()
             .unwrap_or(' ');
+        // Replace tab with a visible space character for the inverted-cell
+        // cursor rendering (the actual tab spacing is already handled in
+        // render_body via line_to_visual).
+        let display_char = if under_cursor == '\t' { ' ' } else { under_cursor };
+
         queue!(out, MoveTo(screen_col, screen_row))?;
-        write!(out, "{}", under_cursor.reversed())?;
+        write!(out, "{}", display_char.reversed())?;
         Ok(())
     }
 
@@ -99,7 +118,9 @@ impl TerminalUi {
             let line_index = self.scroll_offset + screen_row;
             queue!(out, MoveTo(0, (screen_row + 1) as u16))?;
             if line_index < doc.lines.len() {
-                let text: String = doc.lines[line_index].iter().collect();
+                // Fix #2: expand tabs visually for rendering without touching
+                // the underlying char vec.
+                let text = Document::line_to_visual(&doc.lines[line_index]);
                 let visible = pad_or_trim(&text, self.width as usize);
                 write!(out, "{visible}")?;
             } else {
