@@ -34,7 +34,9 @@ fi
 
 cd ..
 rm -rf nyano-src
-rm -- "$0"
+# Only remove the script file if it was executed directly (not piped via curl | sh,
+# in which case $0 is "sh" and there is no file to remove).
+[ -f "$0" ] && rm -- "$0"
 
 printf '\033[32mSuccessfully installed to %s!\033[0m\n' "$INSTALL_PATH"
 
