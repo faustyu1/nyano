@@ -45,6 +45,10 @@ impl Editor {
         result
     }
 
+    fn set_banner(&mut self, message: impl Into<String>) {
+        self.banner = Some((message.into(), Instant::now()));
+    }
+
     fn main_loop(&mut self) -> io::Result<ExitReason> {
         loop {
             self.expire_banner();
@@ -134,14 +138,22 @@ impl Editor {
             Ok(()) => {
                 self.doc.dirty = false;
                 if self.backup_on_save {
-                    let _ = create_backup(&self.file_path, &text);
+                    // Fix #5b: report backup failure via banner instead of
+                    // silently ignoring it with `let _`.
+                    if let Err(e) = create_backup(&self.file_path, &text) {
+                        self.set_banner(format!("Backup failed: {e}"));
+                    }
                 }
                 Ok(None)
             }
             Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
                 Ok(Some(ExitReason::PermissionDenied))
             }
-            Err(_) => Ok(None),
+            // Fix #1: show the error as a banner instead of silently ignoring it.
+            Err(e) => {
+                self.set_banner(format!("Save failed: {e}"));
+                Ok(None)
+            }
         }
     }
 
@@ -160,7 +172,7 @@ impl Editor {
             QuitChoice::Cancel => Ok(None),
         }
     }
-    
+
     fn prompt_save_on_quit(&mut self) -> io::Result<QuitChoice> {
         loop {
             self.ui.render(
