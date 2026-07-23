@@ -1,3 +1,7 @@
+use lazy_static::lazy_static;
+use super::cli::Cli;
+use clap::Parser;
+
 pub struct Document {
     pub lines: Vec<Vec<char>>,
     pub cursor_row: usize,
@@ -5,11 +9,11 @@ pub struct Document {
     pub dirty: bool,
 }
 
-const TAB_WIDTH: usize = 4;
+lazy_static! { static ref TAB_WIDTH: usize = if let Some(tw) = Cli::parse().tab_width { tw } else { 4 }; }
 
 fn visual_width(c: char, at_vis_col: usize) -> usize {
     if c == '\t' {
-        TAB_WIDTH - (at_vis_col % TAB_WIDTH)
+        *TAB_WIDTH - (at_vis_col % *TAB_WIDTH)
     } else {
         1
     }
@@ -48,7 +52,7 @@ impl Document {
         let mut vis = 0usize;
         for &c in line {
             if c == '\t' {
-                let spaces = TAB_WIDTH - (vis % TAB_WIDTH);
+                let spaces = *TAB_WIDTH - (vis % *TAB_WIDTH);
                 for _ in 0..spaces {
                     result.push(' ');
                 }
