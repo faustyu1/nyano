@@ -1,6 +1,6 @@
-use lazy_static::lazy_static;
 use super::cli::Cli;
 use clap::Parser;
+use lazy_static::lazy_static;
 
 pub struct Document {
     pub lines: Vec<Vec<char>>,
@@ -47,7 +47,13 @@ enum Edit {
     },
 }
 
-lazy_static! { static ref TAB_WIDTH: usize = if let Some(tw) = Cli::parse().tab_width { tw } else { 4 }; }
+lazy_static! {
+    static ref TAB_WIDTH: usize = if let Some(tw) = Cli::parse().tab_width {
+        tw
+    } else {
+        4
+    };
+}
 
 fn visual_width(c: char, at_vis_col: usize) -> usize {
     if c == '\t' {
