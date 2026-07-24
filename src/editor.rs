@@ -36,7 +36,14 @@ impl Editor {
     ) -> io::Result<Self> {
         let ui = TerminalUi::init()?;
         let banner = initial_banner.map(|text| (text, Instant::now()));
-        Ok(Editor { doc, ui, file_path, read_only, backup_on_save, banner })
+        Ok(Editor {
+            doc,
+            ui,
+            file_path,
+            read_only,
+            backup_on_save,
+            banner,
+        })
     }
 
     pub fn run(mut self) -> io::Result<ExitReason> {
@@ -50,7 +57,13 @@ impl Editor {
             self.expire_banner();
             self.ui.adjust_scroll(self.doc.cursor_row);
             let banner_text = self.banner.as_ref().map(|(text, _)| text.as_str());
-            self.ui.render(&self.doc, &self.file_path, self.read_only, banner_text, VERSION)?;
+            self.ui.render(
+                &self.doc,
+                &self.file_path,
+                self.read_only,
+                banner_text,
+                VERSION,
+            )?;
 
             if !event::poll(Duration::from_millis(200))? {
                 continue;
@@ -67,7 +80,8 @@ impl Editor {
                 }
                 Event::Mouse(mouse_event) => {
                     if let MouseEventKind::Down(_) = mouse_event.kind {
-                        let row = self.ui.scroll_offset + mouse_event.row.saturating_sub(1) as usize;
+                        let row =
+                            self.ui.scroll_offset + mouse_event.row.saturating_sub(1) as usize;
                         let col = mouse_event.column as usize;
                         self.doc.set_cursor_from_screen(row, col);
                     }
@@ -88,12 +102,26 @@ impl Editor {
         }
     }
 
-    fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> io::Result<Option<ExitReason>> {
+    fn handle_key(
+        &mut self,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+    ) -> io::Result<Option<ExitReason>> {
         if modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('s') {
             if self.read_only {
                 return Ok(None);
             }
             return self.try_save();
+        }
+
+        if modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('z') {
+            self.doc.undo();
+            return Ok(None);
+        }
+
+        if modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('y') {
+            self.doc.redo();
+            return Ok(None);
         }
 
         if (modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('q'))
@@ -132,7 +160,7 @@ impl Editor {
         let text = self.doc.to_text();
         match std::fs::write(&self.file_path, &text) {
             Ok(()) => {
-                self.doc.dirty = false;
+                self.doc.mark_saved();
                 if self.backup_on_save {
                     let _ = create_backup(&self.file_path, &text);
                 }
@@ -160,7 +188,7 @@ impl Editor {
             QuitChoice::Cancel => Ok(None),
         }
     }
-    
+
     fn prompt_save_on_quit(&mut self) -> io::Result<QuitChoice> {
         loop {
             self.ui.render(
