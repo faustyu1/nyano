@@ -33,8 +33,10 @@ Options:
 `Arrows` and `RMB`
 
 #### Keys
-`ctrl+s` - Save changes/file  
-`ctrl+q`/`esc` - Exit
+- `ctrl+s` - Save changes/file
+- `ctrl+z` - Undo last edit
+- `ctrl+y` - Redo last edit
+- `ctrl+q`/`esc` - Exit
 
 ## License
 MIT License 2026
